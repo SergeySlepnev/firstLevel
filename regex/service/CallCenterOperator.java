@@ -1,39 +1,34 @@
-package mentoring.levelone.javacoreleveltwo.regex.service;
+package regex.service;
 
-import mentoring.levelone.javacoreleveltwo.regex.model.Complaint;
-import mentoring.levelone.javacoreleveltwo.regex.model.logResources.LogRow;
-import mentoring.levelone.javacoreleveltwo.regex.model.logResources.NewComplaintRow;
-import mentoring.levelone.javacoreleveltwo.regex.util.IOConst;
-import mentoring.levelone.javacoreleveltwo.regex.util.ThreadUtils;
+import regex.model.IncomingCall;
+import regex.model.NewComplaint;
+import regex.utils.FormatUtils;
+import regex.utils.IOConst;
+import regex.utils.ThreadUtils;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
-import java.util.Arrays;
-import java.util.List;
+import java.util.concurrent.BlockingQueue;
 
-public enum CallCenterOperator implements Runnable {
+public class CallCenterOperator implements Runnable {
 
-    SASHA("Sasha"),
-    ELENA("Elena"),
-    MICHAIL("Michail"),
-    ANDREY("Andrey");
+    private final BlockingQueue<IncomingCall> calls;
+    private final String name;
 
-    public static final List<CallCenterOperator> CALL_CENTER_OPERATORS = Arrays.asList(values());
-    public final String name;
-
-    CallCenterOperator(String name) {
-        Thread.currentThread().setName(name);
+    public CallCenterOperator(String name, BlockingQueue<IncomingCall> calls) {
+        this.calls = calls;
         this.name = name;
+        Thread.currentThread().setName(name);
     }
 
     @Override
     public void run() {
         while (true) {
             try {
-                IncomingCall newIncomingCall = IncomingCall.incomingCalls.take();
-                handleIncomingCall(newIncomingCall);
-                System.out.println(getName() + " is handling incoming call from " + newIncomingCall.phoneNumber());
+                var call = calls.take();
+                handleIncomingCall(call);
+                System.out.println(getName() + " is handling incoming call from " + call.phoneNumber());
                 Thread.sleep(ThreadUtils.handlingTime());
                 System.out.println("The call was handled.");
                 System.out.println(getName() + " is waiting for a new call...");
@@ -43,30 +38,21 @@ public enum CallCenterOperator implements Runnable {
         }
     }
 
-    public void handleIncomingCall(IncomingCall call) throws IOException, InterruptedException {
-        Complaint complaint = Complaint.createNewComplaint(call);
-        NewComplaintRow complaintRecord = createComplaintRecord(complaint);
+    private void handleIncomingCall(IncomingCall call) throws IOException, InterruptedException {
+        NewComplaint newComplaint = NewComplaint.createNewComplaint(call);
+        var complaintRecord = String.join(
+                FormatUtils.COMMA,
+                String.valueOf(newComplaint.getId()),
+                newComplaint.getDateTime(),
+                newComplaint.getLastName(),
+                newComplaint.getFirstName(),
+                newComplaint.getPhoneNumber(),
+                newComplaint.getContent());
         writeToLog(complaintRecord);
     }
 
-    public NewComplaintRow createComplaintRecord(Complaint complaint) throws InterruptedException {
-        NewComplaintRow record = new NewComplaintRow(
-                complaint.getId(),
-                complaint.getDateTime(),
-                complaint.getLastName(),
-                complaint.getFirstName(),
-                complaint.getPhoneNumber(),
-                complaint.getContent());
-        NewComplaintRow.addToQueue(record);
-        return record;
-    }
-
-    public static void writeToLog(LogRow row) throws IOException {
-        Files.writeString(IOConst.newComplaintPath, row.getStringValue() + '\n', StandardOpenOption.APPEND, StandardOpenOption.SYNC);
-    }
-
-    public static int numberOfOperators() {
-        return values().length;
+    private static void writeToLog(String complaintRecord) throws IOException {
+        Files.writeString(IOConst.NEW_COMPLAINT_PATH, complaintRecord + '\n', StandardOpenOption.APPEND, StandardOpenOption.SYNC);
     }
 
     public String getName() {
